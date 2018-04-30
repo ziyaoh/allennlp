@@ -32,6 +32,33 @@ from allennlp.service.predictors import DemoModel
 # that have the same ``Predictor`` wrapper. The corresponding model
 # will be served at the `/predict/<name-of-task>` API endpoint.
 DEFAULT_MODELS = {
+        'machine-comprehension-hard': DemoModel(
+                '/home/ziyaoh/allennlp/models/bidaf/model.tar.gz',  # pylint: disable=line-too-long
+                'machine-comprehension'
+        ),
+        'machine-comprehension-normal': DemoModel(
+                '/home/ziyaoh/allennlp/models/bidaf_half/model.tar.gz',  # pylint: disable=line-too-long
+                'machine-comprehension'
+        ),
+        'machine-comprehension-easy': DemoModel(
+                '/home/ziyaoh/allennlp/models/bidaf_tenth/model.tar.gz',  # pylint: disable=line-too-long
+                'machine-comprehension'
+        ),
+        'machine-comprehension-elmo-easy': DemoModel(
+                '/home/ziyaoh/allennlp/models/bidaf_elmo_tenth/model.tar.gz',  # pylint: disable=line-too-long
+                'machine-comprehension'
+        ),
+        'machine-comprehension-elmo-normal': DemoModel(
+                '/home/ziyaoh/allennlp/models/bidaf_elmo_half/model.tar.gz',  # pylint: disable=line-too-long
+                'machine-comprehension'
+        ),
+        'machine-comprehension-elmo-hard': DemoModel(
+                '/home/ziyaoh/allennlp/models/bidaf_elmo_full/model.tar.gz',  # pylint: disable=line-too-long
+                'machine-comprehension'
+        )
+}
+'''
+DEFAULT_MODELS = {
         'machine-comprehension': DemoModel(
                 'https://s3-us-west-2.amazonaws.com/allennlp/models/bidaf-model-2017.09.15-charpad.tar.gz',  # pylint: disable=line-too-long
                 'machine-comprehension'
@@ -53,6 +80,7 @@ DEFAULT_MODELS = {
                 'sentence-tagger'
         )
 }
+'''
 
 
 class Serve(Subcommand):

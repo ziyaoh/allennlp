@@ -176,6 +176,8 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
         except KeyError as err:
             raise ServerError("Required JSON field not found: " + err.args[0], status_code=400)
 
+        for key in data:
+            prediction[key] = data[key]
         post_hits = _caching_prediction.cache_info().hits  # pylint: disable=no-value-for-parameter
 
         # Add to database and get permalink
