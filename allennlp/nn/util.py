@@ -1,6 +1,7 @@
 """
 Assorted utilities for working with neural networks in AllenNLP.
 """
+# pylint: disable=too-many-lines
 from collections import defaultdict
 from typing import Dict, List, Optional, Any, Tuple, Callable
 import logging
@@ -60,6 +61,28 @@ def get_lengths_from_binary_sequence_mask(mask: torch.Tensor):
     return mask.long().sum(-1)
 
 
+def get_mask_from_sequence_lengths(sequence_lengths: Variable, max_length: int) -> Variable:
+    """
+    Given a variable of shape ``(batch_size,)`` that represents the sequence lengths of each batch
+    element, this function returns a ``(batch_size, max_length)`` mask variable.  For example, if
+    our input was ``[2, 2, 3]``, with a ``max_length`` of 4, we'd return
+    ``[[1, 1, 0, 0], [1, 1, 0, 0], [1, 1, 1, 0]]``.
+
+    We require ``max_length`` here instead of just computing it from the input ``sequence_lengths``
+    because it lets us avoid finding the max, then copying that value from the GPU to the CPU so
+    that we can use it to construct a new tensor.
+
+    Some of our functions are agnostic as to whether they accept ``Tensors`` or ``Variables``, and
+    they just use ``Tensor`` for their type annotations.  We `require` ``Variables`` here, as we
+    call ``sequence_length.data.new()``.  The data type of ``sequence_lengths`` is assumed to be
+    ``long``, but really could be anything, and the data type of the returned mask is ``long``.
+    """
+    # (batch_size, max_length)
+    ones = Variable(sequence_lengths.data.new(sequence_lengths.size(0), max_length).fill_(1))
+    range_tensor = ones.cumsum(dim=1)
+    return (sequence_lengths.unsqueeze(1) >= range_tensor).long()
+
+
 def sort_batch_by_length(tensor: torch.autograd.Variable,
                          sequence_lengths: torch.autograd.Variable):
     """
@@ -105,6 +128,39 @@ def sort_batch_by_length(tensor: torch.autograd.Variable,
     return sorted_tensor, sorted_sequence_lengths, restoration_indices, permutation_index
 
 
+def get_final_encoder_states(encoder_outputs: torch.Tensor,
+                             mask: torch.Tensor,
+                             bidirectional: bool = False) -> torch.Tensor:
+    """
+    Given the output from a ``Seq2SeqEncoder``, with shape ``(batch_size, sequence_length,
+    encoding_dim)``, this method returns the final hidden state for each element of the batch,
+    giving a tensor of shape ``(batch_size, encoding_dim)``.  This is not as simple as
+    ``encoder_outputs[:, -1]``, because the sequences could have different lengths.  We use the
+    mask (which has shape ``(batch_size, sequence_length)``) to find the final state for each batch
+    instance.
+
+    Additionally, if ``bidirectional`` is ``True``, we will split the final dimension of the
+    ``encoder_outputs`` into two and assume that the first half is for the forward direction of the
+    encoder and the second half is for the backward direction.  We will concatenate the last state
+    for each encoder dimension, giving ``encoder_outputs[:, -1, :encoding_dim/2]`` concated with
+    ``encoder_outputs[:, 0, encoding_dim/2:]``.
+    """
+    # These are the indices of the last words in the sequences (i.e. length sans padding - 1).  We
+    # are assuming sequences are right padded.
+    # Shape: (batch_size,)
+    last_word_indices = mask.sum(1).long() - 1
+    batch_size, _, encoder_output_dim = encoder_outputs.size()
+    expanded_indices = last_word_indices.view(-1, 1, 1).expand(batch_size, 1, encoder_output_dim)
+    # Shape: (batch_size, 1, encoder_output_dim)
+    final_encoder_output = encoder_outputs.gather(1, expanded_indices)
+    final_encoder_output = final_encoder_output.squeeze(1)  # (batch_size, encoder_output_dim)
+    if bidirectional:
+        final_forward_output = final_encoder_output[:, :(encoder_output_dim // 2)]
+        final_backward_output = encoder_outputs[:, 0, (encoder_output_dim // 2):]
+        final_encoder_output = torch.cat([final_forward_output, final_backward_output], dim=-1)
+    return final_encoder_output
+
+
 def get_dropout_mask(dropout_probability: float, tensor_for_masking: torch.autograd.Variable):
     """
     Computes and returns an element-wise dropout mask for a given tensor, where
@@ -147,7 +203,7 @@ def masked_softmax(vector, mask):
     if mask is None:
         result = torch.nn.functional.softmax(vector, dim=-1)
     else:
-        # To limit numerical errors from large vector elements outside mask, we zero these out
+        # To limit numerical errors from large vector elements outside the mask, we zero these out.
         result = torch.nn.functional.softmax(vector * mask, dim=-1)
         result = result * mask
         result = result / (result.sum(dim=1, keepdim=True) + 1e-13)
@@ -162,12 +218,23 @@ def masked_log_softmax(vector, mask):
 
     We assume that both ``vector`` and ``mask`` (if given) have shape ``(batch_size, vector_dim)``.
 
-    In the case that the input vector is completely masked, this function returns an array
-    of ``0.0``.  You should be masking the result of whatever computation comes out of this in that
-    case, anyway, so it shouldn't matter.
+    In the case that the input vector is completely masked, the return value of this function is
+    arbitrary, but not ``nan``.  You should be masking the result of whatever computation comes out
+    of this in that case, anyway, so the specific values returned shouldn't matter.  Also, the way
+    that we deal with this case relies on having single-precision floats; mixing half-precision
+    floats with fully-masked vectors will likely give you ``nans``.
+
+    If your logits are all extremely negative (i.e., the max value in your logit vector is -50 or
+    lower), the way we handle masking here could mess you up.  But if you've got logit values that
+    extreme, you've got bigger problems than this.
     """
     if mask is not None:
-        vector = vector + mask.log()
+        # vector + mask.log() is an easy way to zero out masked elements in logspace, but it
+        # results in nans when the whole vector is masked.  We need a very small value instead of a
+        # zero in the mask for these cases.  log(1 + 1e-45) is still basically 0, so we can safely
+        # just add 1e-45 before calling mask.log().  We use 1e-45 because 1e-46 is so small it
+        # becomes 0 - this is just the smallest value we can actually use.
+        vector = vector + (mask + 1e-45).log()
     return torch.nn.functional.log_softmax(vector, dim=1)
 
 
@@ -380,7 +447,8 @@ def weighted_sum(matrix: torch.Tensor, attention: torch.Tensor) -> torch.Tensor:
 def sequence_cross_entropy_with_logits(logits: torch.FloatTensor,
                                        targets: torch.LongTensor,
                                        weights: torch.FloatTensor,
-                                       batch_average: bool = True) -> torch.FloatTensor:
+                                       batch_average: bool = True,
+                                       label_smoothing: float = None) -> torch.FloatTensor:
     """
     Computes the cross entropy loss of a sequence, weighted with respect to
     some user provided weights. Note that the weighting here is not the same as
@@ -401,6 +469,11 @@ def sequence_cross_entropy_with_logits(logits: torch.FloatTensor,
     batch_average : bool, optional, (default = True).
         A bool indicating whether the loss should be averaged across the batch,
         or returned as a vector of losses per batch element.
+    label_smoothing : ``float``, optional (default = None)
+        Whether or not to apply label smoothing to the cross-entropy loss.
+        For example, with a label smoothing value of 0.2, a 4 class classifcation
+        target would look like ``[0.05, 0.05, 0.85, 0.05]`` if the 3rd class was
+        the correct label.
 
     Returns
     -------
@@ -416,11 +489,20 @@ def sequence_cross_entropy_with_logits(logits: torch.FloatTensor,
     # shape : (batch * max_len, 1)
     targets_flat = targets.view(-1, 1).long()
 
-    # Contribution to the negative log likelihood only comes from the exact indices
-    # of the targets, as the target distributions are one-hot. Here we use torch.gather
-    # to extract the indices of the num_classes dimension which contribute to the loss.
-    # shape : (batch * sequence_length, 1)
-    negative_log_likelihood_flat = - torch.gather(log_probs_flat, dim=1, index=targets_flat)
+    if label_smoothing is not None and label_smoothing > 0.0:
+        num_classes = logits.size(-1)
+        smoothing_value = label_smoothing / num_classes
+        # Fill all the correct indices with 1 - smoothing value.
+        one_hot_targets = zeros_like(log_probs_flat).scatter_(-1, targets_flat, 1.0 - label_smoothing)
+        smoothed_targets = one_hot_targets + smoothing_value
+        negative_log_likelihood_flat = - log_probs_flat * smoothed_targets
+        negative_log_likelihood_flat = negative_log_likelihood_flat.sum(-1, keepdim=True)
+    else:
+        # Contribution to the negative log likelihood only comes from the exact indices
+        # of the targets, as the target distributions are one-hot. Here we use torch.gather
+        # to extract the indices of the num_classes dimension which contribute to the loss.
+        # shape : (batch * sequence_length, 1)
+        negative_log_likelihood_flat = - torch.gather(log_probs_flat, dim=1, index=targets_flat)
     # shape : (batch, sequence_length)
     negative_log_likelihood = negative_log_likelihood_flat.view(*targets.size())
     # shape : (batch, sequence_length)
@@ -469,6 +551,35 @@ def ones_like(tensor: torch.Tensor) -> torch.Tensor:
     device at runtime.
     """
     return tensor.clone().fill_(1)
+
+
+def zeros_like(tensor: torch.Tensor) -> torch.Tensor:
+    """
+    Use clone() + fill_() to make sure that a zeros tensor ends up on the right
+    device at runtime.
+    """
+    return tensor.clone().fill_(0)
+
+
+def new_variable_with_data(original: Variable, data: torch.Tensor) -> Variable:
+    """
+    ``Variable.clone`` does not necessarily make a new variable on the same device as the original.
+    This method takes a variable and some data and makes a new variable on the same device as the original
+    variable, but with the provided data. Note that the returned variable will be the same type as the
+    passed data, which may be different from the original variable's type.
+    """
+    # We cast the variable to the type of the data first before filling it with new data.
+    data_type = data.type()
+    return Variable(original.type(data_type).data.new(data))
+
+
+def new_variable_with_size(original: Variable, size: Tuple[int, ...], value) -> Variable:
+    """
+    Returns a new variable on the same device as the ``original``, but containing a tensor of provided
+    ``size``, filled with the given ``value``.
+    """
+    size = torch.Size(size)
+    return Variable(original.data.new(size).fill_(value))
 
 
 def combine_tensors(combination: str, tensors: List[torch.Tensor]) -> torch.Tensor:
@@ -585,6 +696,15 @@ def logsumexp(tensor: torch.Tensor,
         stable_vec = tensor - max_score.unsqueeze(dim)
     return max_score + (stable_vec.exp().sum(dim, keepdim=keepdim)).log()
 
+def get_device_of(tensor: torch.Tensor) -> int:
+    """
+    Returns the device of the tensor.
+    """
+    if not tensor.is_cuda:
+        return -1
+    else:
+        return tensor.get_device()
+
 def flatten_and_batch_shift_indices(indices: torch.Tensor,
                                     sequence_length: int) -> torch.Tensor:
     """
@@ -617,7 +737,7 @@ def flatten_and_batch_shift_indices(indices: torch.Tensor,
     offset_indices : ``torch.LongTensor``
     """
     # Shape: (batch_size)
-    offsets = get_range_vector(indices.size(0), indices.is_cuda) * sequence_length
+    offsets = get_range_vector(indices.size(0), get_device_of(indices)) * sequence_length
     for _ in range(len(indices.size()) - 1):
         offsets = offsets.unsqueeze(1)
 
@@ -633,20 +753,21 @@ def batched_index_select(target: torch.Tensor,
                          indices: torch.LongTensor,
                          flattened_indices: Optional[torch.LongTensor] = None) -> torch.Tensor:
     """
-    The given `indices` of size ``(batch_size, d_1, ..., d_n)`` indexes into the sequence dimension
-    (dimension 2) of the target, which has size ``(batch_size, sequence_length, embedding_size)``.
+    The given ``indices`` of size ``(batch_size, d_1, ..., d_n)`` indexes into the sequence
+    dimension (dimension 2) of the target, which has size ``(batch_size, sequence_length,
+    embedding_size)``.
 
     This function returns selected values in the target with respect to the provided indices, which
-    have size ``(batch_size, d_1, ..., d_n, embedding_size)``. This can use the optionally precomputed
-    :func:`~flattened_indices` with size ``(batch_size * d_1 * ... * d_n)`` if given.
+    have size ``(batch_size, d_1, ..., d_n, embedding_size)``. This can use the optionally
+    precomputed :func:`~flattened_indices` with size ``(batch_size * d_1 * ... * d_n)`` if given.
 
     An example use case of this function is looking up the start and end indices of spans in a
     sequence tensor. This is used in the
     :class:`~allennlp.models.coreference_resolution.CoreferenceResolver`. Model to select
-    contextual word representations corresponding to the start and end indices of mentions. The
-    key reason this can't be done with basic torch functions is that we want to be able to use
-    look-up tensors with an arbitrary number of dimensions (for example, in the coref model,
-    we don't know a-priori how many spans we are looking up).
+    contextual word representations corresponding to the start and end indices of mentions. The key
+    reason this can't be done with basic torch functions is that we want to be able to use look-up
+    tensors with an arbitrary number of dimensions (for example, in the coref model, we don't know
+    a-priori how many spans we are looking up).
 
     Parameters
     ----------
@@ -704,7 +825,7 @@ def flattened_index_select(target: torch.Tensor,
         A Tensor of shape (batch_size, set_size, subset_size, embedding_size).
     """
     if indices.dim() != 2:
-        raise ConfigurationError("Indices passed to flatten_index_select had shape {} but "
+        raise ConfigurationError("Indices passed to flattened_index_select had shape {} but "
                                  "only 2 dimensional inputs are supported.".format(indices.size()))
     # Shape: (batch_size, set_size * subset_size, embedding_size)
     flattened_selected = target.index_select(1, indices.view(-1))
@@ -714,13 +835,13 @@ def flattened_index_select(target: torch.Tensor,
     return selected
 
 
-def get_range_vector(size: int, is_cuda: bool) -> torch.Tensor:
+def get_range_vector(size: int, device: int) -> torch.Tensor:
     """
     Returns a range vector with the desired size, starting at 0. The CUDA implementation
     is meant to avoid copy data from CPU to GPU.
     """
-    if is_cuda:
-        indices = torch.cuda.LongTensor(size).fill_(1).cumsum(0) - 1
+    if device > -1:
+        indices = torch.cuda.LongTensor(size, device=device).fill_(1).cumsum(0) - 1
     else:
         indices = torch.arange(0, size).long()
     return Variable(indices, requires_grad=False)
@@ -897,11 +1018,11 @@ def add_positional_features(tensor: torch.Tensor,
     """
     _, timesteps, hidden_dim = tensor.size()
 
-    timestep_range = get_range_vector(timesteps, tensor.is_cuda).data.float()
+    timestep_range = get_range_vector(timesteps, get_device_of(tensor)).data.float()
     # We're generating both cos and sin frequencies,
     # so half for each.
     num_timescales = hidden_dim // 2
-    timescale_range = get_range_vector(num_timescales, tensor.is_cuda).data.float()
+    timescale_range = get_range_vector(num_timescales, get_device_of(tensor)).data.float()
 
     log_timescale_increments = math.log(float(max_timescale) / float(min_timescale)) / float(num_timescales - 1)
     inverse_timescales = min_timescale * torch.exp(timescale_range * -log_timescale_increments)

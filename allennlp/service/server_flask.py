@@ -51,7 +51,7 @@ def run(port: int,
         trained_models: Dict[str, DemoModel],
         static_dir: str = None) -> None:
     """Run the server programatically"""
-    print("Starting a flask server on port {}.".format(port))
+    logger.info("Starting a flask server on port %i.", port)
 
     if port != 8000:
         logger.warning("The demo requires the API to be run on port 8000.")
@@ -68,6 +68,7 @@ def run(port: int,
         app.predictors[name] = predictor
 
     http_server = WSGIServer(('0.0.0.0', port), app)
+    logger.info("Server started on port %i.  Please visit: http://localhost:%i", port, port)
     http_server.serve_forever()
 
 def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> Flask:
@@ -154,6 +155,12 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
         if request.method == "OPTIONS":
             return Response(response="", status=200)
 
+        # Do log if no argument is specified
+        record_to_database = request.args.get("record", "true").lower() != "false"
+
+        # Do use the cache if no argument is specified
+        use_cache = request.args.get("cache", "true").lower() != "false"
+
         model = app.predictors.get(model_name.lower())
         if model is None:
             raise ServerError("unknown model: {}".format(model_name), status_code=400)
@@ -162,27 +169,25 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
 
         log_blob = {"model": model_name, "inputs": data, "cached": False, "outputs": {}}
 
-        # See if we hit or not. In theory this could result in false positives.
+        # Record the number of cache hits before we hit the cache so we can tell whether we hit or not.
+        # In theory this could result in false positives.
         pre_hits = _caching_prediction.cache_info().hits  # pylint: disable=no-value-for-parameter
 
-        try:
-            if cache_size > 0:
-                # lru_cache insists that all function arguments be hashable,
-                # so unfortunately we have to stringify the data.
-                prediction = _caching_prediction(model, json.dumps(data))
-            else:
-                # if cache_size is 0, skip caching altogether
-                prediction = model.predict_json(data)
-        except KeyError as err:
-            raise ServerError("Required JSON field not found: " + err.args[0], status_code=400)
+        if use_cache and cache_size > 0:
+            # lru_cache insists that all function arguments be hashable,
+            # so unfortunately we have to stringify the data.
+            prediction = _caching_prediction(model, json.dumps(data))
+        else:
+            # if cache_size is 0, skip caching altogether
+            prediction = model.predict_json(data)
 
         for key in data:
             prediction[key] = data[key]
         post_hits = _caching_prediction.cache_info().hits  # pylint: disable=no-value-for-parameter
 
-        # Add to database and get permalink
-        if demo_db is not None:
+        if record_to_database and demo_db is not None:
             try:
+                perma_id = None
                 perma_id = demo_db.add_result(headers=dict(request.headers),
                                               model_name=model_name,
                                               inputs=data,
@@ -196,7 +201,7 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
                 # TODO(joelgrus): catch more specific errors
                 logger.exception("Unable to add result to database", exc_info=True)
 
-        if post_hits > pre_hits:
+        if use_cache and post_hits > pre_hits:
             # Cache hit, so insert an artifical pause
             log_blob["cached"] = True
             time.sleep(0.25)
@@ -214,14 +219,15 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
             log_blob["outputs"]["tags"] = prediction["tags"]
         elif model_name == "semantic-role-labeling":
             verbs = []
-
             for verb in prediction["verbs"]:
                 # Don't want to log boring verbs with no semantic parses.
                 good_tags = [tag for tag in verb["tags"] if tag != "0"]
                 if len(good_tags) > 1:
                     verbs.append({"verb": verb["verb"], "description": verb["description"]})
-
             log_blob["outputs"]["verbs"] = verbs
+
+        elif model_name == "constituency-parsing":
+            log_blob["outputs"]["trees"] = prediction["trees"]
 
         logger.info("prediction: %s", json.dumps(log_blob))
 
@@ -248,11 +254,13 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
 
     # As a SPA, we need to return index.html for /model-name and /model-name/permalink
     @app.route('/semantic-role-labeling')
+    @app.route('/constituency-parsing')
     @app.route('/machine-comprehension')
     @app.route('/textual-entailment')
     @app.route('/coreference-resolution')
     @app.route('/named-entity-recognition')
     @app.route('/semantic-role-labeling/<permalink>')
+    @app.route('/constituency-parsing/<permalink>')
     @app.route('/machine-comprehension/<permalink>')
     @app.route('/textual-entailment/<permalink>')
     @app.route('/coreference-resolution/<permalink>')

@@ -26,7 +26,7 @@ You can install `allennlp` using pip in three easy steps.
     $ pip install allennlp
     ```
 
-2.  You'll also need to install PyTorch 0.3, following the appropriate instructions
+2.  You'll also need to install PyTorch 0.3.1, following the appropriate instructions
     for your platform from [their website](http://pytorch.org/).
 
 3.  Finally, you'll need to download spaCy's English models:
@@ -53,18 +53,18 @@ $ INSTALL_TEST_REQUIREMENTS=true scripts/install_requirements.sh
 changing the flag to `false` if you don't want to be able to run tests.
 (Narrator: You want to be able to run tests.)
 
-You'll also need to install PyTorch 0.3, following the appropriate instructions
+You'll also need to install PyTorch 0.3.1, following the appropriate instructions
 for your platform from [their website](http://pytorch.org/).
 
 ## Once You've Installed
 
 If you just want to use the models and helper classes that are included with AllenNLP,
-you can use the included "run" script, which provides a command-line interface to
+you can use the included "allennlp" command, which provides a command-line interface to
 common functionality around training and evaluating models.
 
 ```
-$ python -m allennlp.run
-usage: run.py [command]
+$ allennlp
+usage: allennlp [command]
 
 Run AllenNLP
 
@@ -92,7 +92,7 @@ The first time you run it, it will download
 several large serialized models from Amazon S3.
 
 ```
-$ python -m allennlp.run serve
+$ allennlp serve
 Starting a sanic server on port 8000.
 [... lots of logging omitted ...]
 2017-08-16 18:55:12 - (sanic)[INFO]: Goin' Fast @ http://0.0.0.0:8000

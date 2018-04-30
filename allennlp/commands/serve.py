@@ -6,20 +6,17 @@ their predictions.
 
 .. code-block:: bash
 
-    $ python -m allennlp.run serve --help
-    usage: run [command] serve [-h] [--port PORT] [--workers WORKERS]
-                            [--config-file CONFIG_FILE]
+    $ allennlp serve --help
+    usage: allennlp serve [-h] [--port PORT]
 
     Run the web service, which provides an HTTP API as well as a web demo.
 
     optional arguments:
-    -h, --help            show this help message and exit
+    -h, --help   show this help message and exit
     --port PORT
-    --workers WORKERS
 """
 
 import argparse
-from typing import Dict
 
 from allennlp.commands.subcommand import Subcommand
 from allennlp.service import server_flask as server
@@ -64,30 +61,30 @@ DEFAULT_MODELS = {
                 'machine-comprehension'
         ),
         'semantic-role-labeling': DemoModel(
-                'https://s3-us-west-2.amazonaws.com/allennlp/models/srl-model-2017.09.05.tar.gz', # pylint: disable=line-too-long
+                'https://s3-us-west-2.amazonaws.com/allennlp/models/srl-model-2018.02.27.tar.gz', # pylint: disable=line-too-long
                 'semantic-role-labeling'
         ),
         'textual-entailment': DemoModel(
-                'https://s3-us-west-2.amazonaws.com/allennlp/models/decomposable-attention-2017.09.04.tar.gz',  # pylint: disable=line-too-long
+                'https://s3-us-west-2.amazonaws.com/allennlp/models/decomposable-attention-elmo-2018.02.19.tar.gz',  # pylint: disable=line-too-long
                 'textual-entailment'
         ),
         'coreference-resolution': DemoModel(
-                'https://s3-us-west-2.amazonaws.com/allennlp/models/coref-model-2017.11.09.tar.gz',  # pylint: disable=line-too-long
+                'https://s3-us-west-2.amazonaws.com/allennlp/models/coref-model-2018.02.05.tar.gz',  # pylint: disable=line-too-long
                 'coreference-resolution'
         ),
         'named-entity-recognition': DemoModel(
-                'https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2017.11.15.tar.gz',  # pylint: disable=line-too-long
+                'https://s3-us-west-2.amazonaws.com/allennlp/models/ner-model-2018.02.12.tar.gz',  # pylint: disable=line-too-long
                 'sentence-tagger'
+        ),
+        'constituency-parsing': DemoModel(
+                'https://s3-us-west-2.amazonaws.com/allennlp/models/elmo-constituency-parser-2018.03.14.tar.gz',  # pylint: disable=line-too-long
+                'constituency-parser'
         )
 }
 '''
 
 
 class Serve(Subcommand):
-    def __init__(self, model_overrides: Dict[str, DemoModel] = {}) -> None:
-        # pylint: disable=dangerous-default-value
-        self.trained_models = {**DEFAULT_MODELS, **model_overrides}
-
     def add_subparser(self, name: str, parser: argparse._SubParsersAction) -> argparse.ArgumentParser:
         # pylint: disable=protected-access
         description = '''Run the web service, which provides an HTTP API as well as a web demo.'''
@@ -96,12 +93,9 @@ class Serve(Subcommand):
 
         subparser.add_argument('--port', type=int, default=8000)
 
-        subparser.set_defaults(func=_serve(self.trained_models))
+        subparser.set_defaults(func=_serve)
 
         return subparser
 
-def _serve(trained_models: Dict[str, DemoModel]):
-    def serve_inner(args: argparse.Namespace) -> None:
-        server.run(args.port, trained_models)
-
-    return serve_inner
+def _serve(args: argparse.Namespace):
+    server.run(args.port, DEFAULT_MODELS)

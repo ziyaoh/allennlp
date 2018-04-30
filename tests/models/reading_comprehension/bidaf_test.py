@@ -10,6 +10,7 @@ from allennlp.common import Params
 from allennlp.common.checks import ConfigurationError
 from allennlp.common.testing import ModelTestCase
 from allennlp.data import DatasetReader, Vocabulary
+from allennlp.data.dataset import Batch
 from allennlp.models import BidirectionalAttentionFlow, Model
 
 
@@ -19,7 +20,9 @@ class BidirectionalAttentionFlowTest(ModelTestCase):
         self.set_up_model('tests/fixtures/bidaf/experiment.json', 'tests/fixtures/data/squad.json')
 
     def test_forward_pass_runs_correctly(self):
-        training_tensors = self.dataset.as_tensor_dict()
+        batch = Batch(self.instances)
+        batch.index_instances(self.vocab)
+        training_tensors = batch.as_tensor_dict()
         output_dict = self.model(**training_tensors)
 
         metrics = self.model.get_metrics(reset=True)
@@ -38,14 +41,14 @@ class BidirectionalAttentionFlowTest(ModelTestCase):
         span_start, span_end = tuple(output_dict['best_span'][0].data.numpy())
         assert span_start >= 0
         assert span_start <= span_end
-        assert span_end < self.dataset.instances[0].fields['passage'].sequence_length()
+        assert span_end < self.instances[0].fields['passage'].sequence_length()
         assert isinstance(output_dict['best_span_str'][0], str)
 
     # Some recent efficiency changes (using bmm for `weighted_sum`, the more efficient
     # `masked_softmax`...) have made this _very_ flaky...
     @flaky(max_runs=5)
     def test_model_can_train_save_and_load(self):
-        self.ensure_model_can_train_save_and_load(self.param_file, tolerance=2e-5)
+        self.ensure_model_can_train_save_and_load(self.param_file, tolerance=1e-4)
 
     @flaky
     def test_batch_predictions_are_consistent(self):
@@ -59,16 +62,17 @@ class BidirectionalAttentionFlowTest(ModelTestCase):
         # pylint: disable=protected-access,attribute-defined-outside-init
 
         # Save some state.
-        saved_dataset = self.dataset
         saved_model = self.model
+        saved_instances = self.instances
 
         # Modify the state, run the test with modified state.
         params = Params.from_file(self.param_file)
         reader = DatasetReader.from_params(params['dataset_reader'])
         reader._token_indexers = {'tokens': reader._token_indexers['tokens']}
-        self.dataset = reader.read('tests/fixtures/data/squad.json')
-        vocab = Vocabulary.from_instances(self.dataset)
-        self.dataset.index_instances(vocab)
+        self.instances = reader.read('tests/fixtures/data/squad.json')
+        vocab = Vocabulary.from_instances(self.instances)
+        for instance in self.instances:
+            instance.index_fields(vocab)
         del params['model']['text_field_embedder']['token_characters']
         params['model']['phrase_layer']['input_size'] = 2
         self.model = Model.from_params(vocab, params['model'])
@@ -77,33 +81,33 @@ class BidirectionalAttentionFlowTest(ModelTestCase):
 
         # Restore the state.
         self.model = saved_model
-        self.dataset = saved_dataset
+        self.instances = saved_instances
 
     def test_get_best_span(self):
         # pylint: disable=protected-access
 
         span_begin_probs = Variable(torch.FloatTensor([[0.1, 0.3, 0.05, 0.3, 0.25]])).log()
         span_end_probs = Variable(torch.FloatTensor([[0.65, 0.05, 0.2, 0.05, 0.05]])).log()
-        begin_end_idxs = BidirectionalAttentionFlow._get_best_span(span_begin_probs, span_end_probs)
+        begin_end_idxs = BidirectionalAttentionFlow.get_best_span(span_begin_probs, span_end_probs)
         assert_almost_equal(begin_end_idxs.data.numpy(), [[0, 0]])
 
-        # When we were using exlcusive span ends, this was an edge case of the dynamic program.
+        # When we were using exclusive span ends, this was an edge case of the dynamic program.
         # We're keeping the test to make sure we get it right now, after the switch in inclusive
         # span end.  The best answer is (1, 1).
         span_begin_probs = Variable(torch.FloatTensor([[0.4, 0.5, 0.1]])).log()
         span_end_probs = Variable(torch.FloatTensor([[0.3, 0.6, 0.1]])).log()
-        begin_end_idxs = BidirectionalAttentionFlow._get_best_span(span_begin_probs, span_end_probs)
+        begin_end_idxs = BidirectionalAttentionFlow.get_best_span(span_begin_probs, span_end_probs)
         assert_almost_equal(begin_end_idxs.data.numpy(), [[1, 1]])
 
         # Another instance that used to be an edge case.
         span_begin_probs = Variable(torch.FloatTensor([[0.8, 0.1, 0.1]])).log()
         span_end_probs = Variable(torch.FloatTensor([[0.8, 0.1, 0.1]])).log()
-        begin_end_idxs = BidirectionalAttentionFlow._get_best_span(span_begin_probs, span_end_probs)
+        begin_end_idxs = BidirectionalAttentionFlow.get_best_span(span_begin_probs, span_end_probs)
         assert_almost_equal(begin_end_idxs.data.numpy(), [[0, 0]])
 
         span_begin_probs = Variable(torch.FloatTensor([[0.1, 0.2, 0.05, 0.3, 0.25]])).log()
         span_end_probs = Variable(torch.FloatTensor([[0.1, 0.2, 0.5, 0.05, 0.15]])).log()
-        begin_end_idxs = BidirectionalAttentionFlow._get_best_span(span_begin_probs, span_end_probs)
+        begin_end_idxs = BidirectionalAttentionFlow.get_best_span(span_begin_probs, span_end_probs)
         assert_almost_equal(begin_end_idxs.data.numpy(), [[1, 2]])
 
     def test_mismatching_dimensions_throws_configuration_error(self):

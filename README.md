@@ -2,24 +2,69 @@
 
 [![Build Status](http://build.allennlp.org/app/rest/builds/buildType:(id:AllenNLP_AllenNLPCommits)/statusIcon)](http://build.allennlp.org/viewType.html?buildTypeId=AllenNLP_AllenNLPCommits&guest=1)
 [![codecov](https://codecov.io/gh/allenai/allennlp/branch/master/graph/badge.svg)](https://codecov.io/gh/allenai/allennlp)
-[![docker](https://images.microbadger.com/badges/image/allennlp/allennlp.svg)](https://microbadger.com/images/allennlp/allennlp)
+[![docker](https://images.microbadger.com/badges/version/allennlp/allennlp.svg)](https://microbadger.com/images/allennlp/allennlp)
 
 An [Apache 2.0](https://github.com/allenai/allennlp/blob/master/LICENSE) NLP research library, built on PyTorch,
 for developing state-of-the-art deep learning models on a wide variety of linguistic tasks.
 
-## Quickstart
+## Running AllenNLP
 
-The fastest way to get an environment to run AllenNLP is with Docker.  Once you have [installed Docker](https://docs.docker.com/engine/installation/)
-just run `docker run -it --rm allennlp/allennlp` to get an environment that will run on either the cpu or gpu.
+The preferred way to install AllenNLP is via `pip`.
+
+tldr; Just run `pip install allennlp` in your python 3.6 environment and you're good to go!
+If you need pointers on setting up a python 3.6 environment, see below.
+
+_Just want AllenNLP models running as a service via Docker? `docker run --rm  -p 8000:8000 allennlp/allennlp:v0.4.1 python -m allennlp.run serve`_
+
+### Setting up a virtual environment
+
+[Conda](https://conda.io/) can be used set up a virtual environment
+with the version of Python required for AllenNLP and in which you can
+sandbox its dependencies. If you already have a python 3.6 environment
+you want to use, you can skip to the 'installing via pip' section.
+
+1.  [Download and install Conda](https://conda.io/docs/download.html).
+
+2.  Create a Conda environment with Python 3.6
+
+    ```
+    conda create -n allennlp python=3.6
+    ```
+
+3.  Activate the Conda environment. You will need to activate the Conda environment in each terminal in which you want to use AllenNLP.
+
+    ```
+    source activate allennlp
+    ```
+
+### Installing via pip
+
+1.  Install AllenNLP.
+
+    ```
+    pip install allennlp
+    ```
+
+That's it! You're now ready to build and train AllenNLP models.
+AllenNLP installs a script when you install the python package, meaning you can run allennlp commands just by typing `allennlp` into a terminal.
+
+_`pip` currently installs Pytorch for CUDA 8 only (or no GPU). If you require a newer version,
+please visit http://pytorch.org/ and install the relevant pytorch binary._
+
+## Installing using Docker
+
+Once you have [installed Docker](https://docs.docker.com/engine/installation/)
+just run `docker run -it -p 8000:8000 --rm allennlp/allennlp:v0.4.0` to get an environment that will run on either the cpu or gpu.
 
 Now you can do any of the following:
 
-* Run a model on example sentences with `allennlp/run bulk`.
-* Start a web service to host our models with `allennlp/run serve`.
+* Run a model on example sentences with `python -m allennlp.run predict`.
+* Start a web service to host our models with `python -m allennlp.run serve`.
 * Interactively code against AllenNLP from the Python interpreter with `python`.
 
-You can also install via the `pip` package manager or by cloning this repository into a Python 3.6 virtualenv.
-See below for more detailed instructions.
+Using Docker installs AllenNLP from source, for development. Consequently, the `allennlp` commandline tool is not
+installed and you will have to use the correpsonding python commands (see above).
+
 
 ## What is AllenNLP?
 
@@ -81,46 +126,6 @@ state of the art models with high quality engineering.
 </tr>
 </table>
 
-## Running AllenNLP
-
-### Setting up a virtual environment
-
-[Conda](https://conda.io/) can be used set up a virtual environment
-with the version of Python required for AllenNLP and in which you can
-sandbox its dependencies:
-
-1.  [Download and install Conda](https://conda.io/docs/download.html).
-
-2.  Create a Conda environment with Python 3.6
-
-    ```
-    conda create -n allennlp python=3.6
-    ```
-
-3.  Activate the Conda environment.  (You will need to activate the Conda environment in each terminal in which you want to use AllenNLP.
-
-    ```
-    source activate allennlp
-    ```
-
-4. Install AllenNLP in your environment.
-
-### Installing via pip
-
-The preferred way to install AllenNLP into your environment is via `pip`:
-
-```
-pip install allennlp
-```
-
-You will also need to manually install some dependencies:
-
-1. Visit http://pytorch.org/ and install the relevant pytorch package.
-
-2. Download necessary spacy models. `python -m spacy download en_core_web_sm`.
-
-That's it! You're now ready to build and train AllenNLP models.
-
 ### Setting up a development environment
 
 If you want to make changes to AllenNLP library itself
@@ -147,7 +152,7 @@ cd allennlp
 
 4. Visit http://pytorch.org/ and install the relevant pytorch package.
 
-You should now be able to test your installation with `pytest -v`.  Congratulations!
+You should now be able to test your installation with `./scripts/verify.py`.  Congratulations!
 
 ### Setting up a Docker development environment
 
@@ -166,7 +171,7 @@ new image on every update to the master branch.  To download
 the latest released from [Docker Hub](https://hub.docker.com/r/allennlp/) just run:
 
 ```bash
-docker pull allennlp/allennlp:v0.3.0
+docker pull allennlp/allennlp:v0.4.0
 ```
 
 #### Building a Docker image
@@ -195,27 +200,8 @@ allennlp/allennlp            latest              b66aee6cb593        5 minutes a
 You can run the image with `docker run --rm -it allennlp/allennlp`.  The `--rm` flag cleans up the image on exit and the
 `-it` flags make the session interactive so you can use the bash shell the Docker image starts.
 
-The Docker environment uses Conda to install Python and automatically enters the Conda environment "allennlp".
+You can test your installation by running  `./scripts/verify.py`.
 
-You can test your installation by running  `pytest -v`.
-
-
-### Setting up a Kubernetes development environment
-
-Kubernetes will deploy your Docker images into the cloud, so you can have a reproducible development environment on AWS.
-
-1. Set up `kubectl` to connect to your Kubernetes cluster.
-
-2. Run `kubectl create -f /path/to/kubernetes-dev-environment.yaml`.  This will create a "job" on the cluster which you
-can later connect to using bash.  Note that you will be using the last Dockerfile that would pushed, and so the source
-code may not match what you have locally.
-
-4. Retrieve the name of the pod created with `kubectl describe job <JOBNAME> --namespace=allennlp`.
-The pod name will be your job name followed by some additional characters.
-
-5. Get a shell inside the container using `kubectl exec -it <PODNAME> bash`
-
-6. When you are done, don't forget to kill your job using `kubectl delete -f /path/to/kubernetes-dev-environment.yaml`
 
 ## Team
 

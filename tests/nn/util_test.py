@@ -19,6 +19,15 @@ class TestNnUtil(AllenNlpTestCase):
         lengths = util.get_lengths_from_binary_sequence_mask(binary_mask)
         numpy.testing.assert_array_equal(lengths.numpy(), numpy.array([3, 2, 6, 1]))
 
+    def test_get_mask_from_sequence_lengths(self):
+        sequence_lengths = Variable(torch.LongTensor([4, 3, 1, 4, 2]))
+        mask = util.get_mask_from_sequence_lengths(sequence_lengths, 5).data.numpy()
+        assert_almost_equal(mask, [[1, 1, 1, 1, 0],
+                                   [1, 1, 1, 0, 0],
+                                   [1, 0, 0, 0, 0],
+                                   [1, 1, 1, 1, 0],
+                                   [1, 1, 0, 0, 0]])
+
     def test_get_sequence_lengths_converts_to_long_tensor_and_avoids_variable_overflow(self):
         # Tests the following weird behaviour in Pytorch 0.1.12
         # doesn't happen for our sequence masks:
@@ -58,6 +67,19 @@ class TestNnUtil(AllenNlpTestCase):
         sequence_lengths = Variable(torch.LongTensor([3, 4, 1, 5, 7]))
         with pytest.raises(ConfigurationError):
             _ = util.sort_batch_by_length(tensor, sequence_lengths)
+
+    def test_get_final_encoder_states(self):
+        encoder_outputs = Variable(torch.Tensor([[[1, 2, 3, 4],
+                                                  [5, 6, 7, 8],
+                                                  [9, 10, 11, 12]],
+                                                 [[13, 14, 15, 16],
+                                                  [17, 18, 19, 20],
+                                                  [21, 22, 23, 24]]]))
+        mask = Variable(torch.Tensor([[1, 1, 1], [1, 1, 0]]))
+        final_states = util.get_final_encoder_states(encoder_outputs, mask, bidirectional=False)
+        assert_almost_equal(final_states.data.numpy(), [[9, 10, 11, 12], [17, 18, 19, 20]])
+        final_states = util.get_final_encoder_states(encoder_outputs, mask, bidirectional=True)
+        assert_almost_equal(final_states.data.numpy(), [[9, 10, 3, 4], [17, 18, 15, 16]])
 
     def test_masked_softmax_no_mask(self):
         # Testing the general unmasked 1D case.
@@ -198,12 +220,11 @@ class TestNnUtil(AllenNlpTestCase):
                                   numpy.array([[0., 0., 0., 1.]]))
 
         # Testing the masked 1D case where the input is not all 0s
-        # and the mask is all 0s.
+        # and the mask is all 0s.  The output here will be arbitrary, but it should not be nan.
         vector_1d = Variable(torch.FloatTensor([[0.0, 2.0, 3.0, 4.0]]))
         mask_1d = Variable(torch.FloatTensor([[0.0, 0.0, 0.0, 0.0]]))
-        vector_1d_softmaxed = util.masked_softmax(vector_1d, mask_1d).data.numpy()
-        assert_array_almost_equal(numpy.exp(vector_1d_softmaxed),
-                                  numpy.array([[1.0, 1.0, 1.0, 1.0]]))
+        vector_1d_softmaxed = util.masked_log_softmax(vector_1d, mask_1d).data.numpy()
+        assert not numpy.isnan(vector_1d_softmaxed).any()
 
     def test_get_text_field_mask_returns_a_correct_mask(self):
         text_field_tensors = {
@@ -423,10 +444,10 @@ class TestNnUtil(AllenNlpTestCase):
         tensor[3, :, :] = 0
         weights = (tensor != 0.0)[:, :, 0].long().squeeze(-1)
         tensor2 = tensor.clone()
-        tensor[0, 3:, :] = 2
-        tensor[1, 4:, :] = 13
-        tensor[2, 2:, :] = 234
-        tensor[3, :, :] = 65
+        tensor2[0, 3:, :] = 2
+        tensor2[1, 4:, :] = 13
+        tensor2[2, 2:, :] = 234
+        tensor2[3, :, :] = 65
         targets = torch.LongTensor(numpy.random.randint(0, 3, [5, 7]))
         targets *= weights
 
@@ -437,6 +458,25 @@ class TestNnUtil(AllenNlpTestCase):
         loss = util.sequence_cross_entropy_with_logits(tensor, targets, weights)
         loss2 = util.sequence_cross_entropy_with_logits(tensor2, targets, weights)
         assert loss.data.numpy() == loss2.data.numpy()
+
+    def test_sequence_cross_entropy_with_logits_smooths_labels_correctly(self):
+        tensor = torch.rand([1, 3, 4])
+        targets = torch.LongTensor(numpy.random.randint(0, 3, [1, 3]))
+
+        tensor = Variable(tensor)
+        targets = Variable(targets)
+        weights = Variable(torch.ones([2, 3]))
+        loss = util.sequence_cross_entropy_with_logits(tensor, targets, weights, label_smoothing=0.1)
+
+        correct_loss = 0.0
+        for prediction, label in zip(tensor.squeeze(0), targets.squeeze(0)):
+            prediction = torch.nn.functional.log_softmax(prediction)
+            correct_loss += prediction[label] * 0.9
+            # incorrect elements
+            correct_loss += prediction.sum() * 0.1/4
+        # Average over sequence.
+        correct_loss = - correct_loss / 3
+        numpy.testing.assert_array_almost_equal(loss.data.numpy(), correct_loss.data.numpy())
 
     def test_sequence_cross_entropy_with_logits_averages_batch_correctly(self):
         # test batch average is the same as dividing the batch averaged

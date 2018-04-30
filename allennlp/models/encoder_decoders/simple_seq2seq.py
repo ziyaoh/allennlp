@@ -10,8 +10,8 @@ from torch.nn.modules.linear import Linear
 import torch.nn.functional as F
 
 from allennlp.common import Params
+from allennlp.common.util import START_SYMBOL, END_SYMBOL
 from allennlp.data.vocabulary import Vocabulary
-from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
 from allennlp.modules import Attention, TextFieldEmbedder, Seq2SeqEncoder
 from allennlp.modules.similarity_functions import SimilarityFunction
 from allennlp.modules.token_embedders import Embedding
@@ -277,7 +277,7 @@ class SimpleSeq2Seq(Model):
             # Collect indices till the first end_symbol
             if self._end_index in indices:
                 indices = indices[:indices.index(self._end_index)]
-            predicted_tokens = [self.vocab.get_token_from_index(x, namespace="target_tokens")
+            predicted_tokens = [self.vocab.get_token_from_index(x, namespace=self._target_namespace)
                                 for x in indices]
             all_predicted_tokens.append(predicted_tokens)
         output_dict["predicted_tokens"] = all_predicted_tokens
@@ -298,6 +298,7 @@ class SimpleSeq2Seq(Model):
         else:
             attention_function = None
         scheduled_sampling_ratio = params.pop_float("scheduled_sampling_ratio", 0.0)
+        params.assert_empty(cls.__name__)
         return cls(vocab,
                    source_embedder=source_embedder,
                    encoder=encoder,

@@ -52,8 +52,12 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
         as without this feature, the self attention layers have no idea of absolute or relative
         position (as they are just computing pairwise similarity between vectors of elements),
         which can be important features for many tasks.
-    dropout_prob : ``float``, optional, (default = 0.2)
+    dropout_prob : ``float``, optional, (default = 0.1)
         The dropout probability for the feedforward network.
+    residual_dropout_prob : ``float``, optional, (default = 0.2)
+        The dropout probability for the residual connections.
+    attention_dropout_prob : ``float``, optional, (default = 0.1)
+        The dropout probability for the attention distributions in each attention layer.
     """
     def __init__(self,
                  input_dim: int,
@@ -63,7 +67,9 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
                  num_layers: int,
                  num_attention_heads: int,
                  use_positional_encoding: bool = True,
-                 dropout_prob: float = 0.2) -> None:
+                 dropout_prob: float = 0.1,
+                 residual_dropout_prob: float = 0.2,
+                 attention_dropout_prob: float = 0.1) -> None:
         super(StackedSelfAttentionEncoder, self).__init__()
 
         self._use_positional_encoding = use_positional_encoding
@@ -84,27 +90,27 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
             self.add_module(f"feedforward_{i}", feedfoward)
             self._feedfoward_layers.append(feedfoward)
 
-            feedforward_layer_norm = LayerNorm(feedfoward.get_input_dim())
+            feedforward_layer_norm = LayerNorm(feedfoward.get_output_dim())
             self.add_module(f"feedforward_layer_norm_{i}", feedforward_layer_norm)
             self._feed_forward_layer_norm_layers.append(feedforward_layer_norm)
 
             self_attention = MultiHeadSelfAttention(num_heads=num_attention_heads,
                                                     input_dim=hidden_dim,
                                                     attention_dim=projection_dim,
-                                                    values_dim=projection_dim)
+                                                    values_dim=projection_dim,
+                                                    attention_dropout_prob=attention_dropout_prob)
             self.add_module(f"self_attention_{i}", self_attention)
             self._attention_layers.append(self_attention)
 
-            layer_norm = LayerNorm(self_attention.get_input_dim())
+            layer_norm = LayerNorm(self_attention.get_output_dim())
             self.add_module(f"layer_norm_{i}", layer_norm)
             self._layer_norm_layers.append(layer_norm)
 
             feedfoward_input_dim = hidden_dim
 
-        self.dropout = Dropout(dropout_prob)
+        self.dropout = Dropout(residual_dropout_prob)
         self._input_dim = input_dim
         self._output_dim = self._attention_layers[-1].get_output_dim()
-        self._output_layer_norm = LayerNorm(self._output_dim)
 
     @overrides
     def get_input_dim(self) -> int:
@@ -114,6 +120,11 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
     def get_output_dim(self) -> int:
         return self._output_dim
 
+    @overrides
+    def is_bidirectional(self):
+        return False
+
+    @overrides
     def forward(self, inputs: torch.Tensor, mask: torch.Tensor): # pylint: disable=arguments-differ
         if self._use_positional_encoding:
             output = add_positional_features(inputs)
@@ -130,16 +141,17 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
             # Project output of attention encoder through a feedforward
             # network and back to the input size for the next layer.
             # shape (batch_size, timesteps, input_size)
-            feedforward_output = feedforward(feedforward_layer_norm(output))
+            feedforward_output = feedforward(output)
             feedforward_output = self.dropout(feedforward_output)
             if feedforward_output.size() == cached_input.size():
                 # First layer might have the wrong size for highway
                 # layers, so we exclude it here.
-                feedforward_output += cached_input
+                feedforward_output = feedforward_layer_norm(feedforward_output + cached_input)
             # shape (batch_size, sequence_length, hidden_dim)
-            attention_output = attention(layer_norm(feedforward_output), mask)
-            output = self.dropout(attention_output) + feedforward_output
-        return self._output_layer_norm(output)
+            attention_output = attention(feedforward_output, mask)
+            output = layer_norm(self.dropout(attention_output) + feedforward_output)
+
+        return output
 
     @classmethod
     def from_params(cls, params: Params):
@@ -150,7 +162,10 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
         num_layers = params.pop_int("num_layers", 2)
         num_attention_heads = params.pop_int('num_attention_heads', 3)
         use_positional_encoding = params.pop_bool('use_positional_encoding', True)
-        dropout_prob = params.pop_float("dropout_prob", 0.2)
+        dropout_prob = params.pop_float("dropout_prob", 0.1)
+        residual_dropout_prob = params.pop_float("residual_dropout_prob", 0.2)
+        attention_dropout_prob = params.pop_float("attention_dropout_prob", 0.1)
+        params.assert_empty(cls.__name__)
 
         return cls(input_dim=input_dim,
                    hidden_dim=hidden_dim,
@@ -159,4 +174,6 @@ class StackedSelfAttentionEncoder(Seq2SeqEncoder):
                    num_layers=num_layers,
                    num_attention_heads=num_attention_heads,
                    use_positional_encoding=use_positional_encoding,
-                   dropout_prob=dropout_prob)
+                   dropout_prob=dropout_prob,
+                   residual_dropout_prob=residual_dropout_prob,
+                   attention_dropout_prob=attention_dropout_prob)

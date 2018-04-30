@@ -4,9 +4,15 @@ import json
 import os
 import tarfile
 
+import torch
+from torch.autograd import Variable
+
 from allennlp.commands.train import train_model
 from allennlp.common import Params
 from allennlp.common.testing import ModelTestCase
+from allennlp.data.dataset import Batch
+from allennlp.modules.token_embedders import ElmoTokenEmbedder
+
 
 class TestElmoTokenEmbedder(ModelTestCase):
     def setUp(self):
@@ -18,7 +24,9 @@ class TestElmoTokenEmbedder(ModelTestCase):
         self.ensure_model_can_train_save_and_load(self.param_file)
 
     def test_tagger_with_elmo_token_embedder_forward_pass_runs_correctly(self):
-        training_tensors = self.dataset.as_tensor_dict()
+        dataset = Batch(self.instances)
+        dataset.index_instances(self.vocab)
+        training_tensors = dataset.as_tensor_dict()
         output_dict = self.model(**training_tensors)
         tags = output_dict['tags']
         assert len(tags) == 2
@@ -60,3 +68,28 @@ class TestElmoTokenEmbedder(ModelTestCase):
         for key, original_filename in files_to_archive.items():
             new_filename = os.path.join(unarchive_dir, "fta", key)
             assert filecmp.cmp(original_filename, new_filename)
+
+    def test_forward_works_with_projection_layer(self):
+        params = Params({
+                'options_file': 'tests/fixtures/elmo/options.json',
+                'weight_file': 'tests/fixtures/elmo/lm_weights.hdf5',
+                'projection_dim': 20
+                })
+        word1 = [0] * 50
+        word2 = [0] * 50
+        word1[0] = 6
+        word1[1] = 5
+        word1[2] = 4
+        word1[3] = 3
+        word2[0] = 3
+        word2[1] = 2
+        word2[2] = 1
+        word2[3] = 0
+        embedding_layer = ElmoTokenEmbedder.from_params(vocab=None, params=params)
+        input_tensor = Variable(torch.LongTensor([[word1, word2]]))
+        embedded = embedding_layer(input_tensor).data.numpy()
+        assert embedded.shape == (1, 2, 20)
+
+        input_tensor = Variable(torch.LongTensor([[[word1]]]))
+        embedded = embedding_layer(input_tensor).data.numpy()
+        assert embedded.shape == (1, 1, 1, 20)

@@ -12,6 +12,10 @@ allennlp.service.predictors
 * :ref:`SemanticRoleLabelerPredictor<semantic-role-labeler>`
 * :ref:`SentenceTaggerPredictor<sentence-tagger>`
 * :ref:`CorefPredictor<coreference-resolution>`
+* :ref:`ConstituencyParserPredictor<constituency-parser>`
+* :ref:`SimpleSeq2SeqPredictor<simple-seq2seq>`
+* :ref:`WikiTablesParserPredictor<wikitables-parser>`
+* :ref:`NlvrParserPredictor<nlvr-parser>`
 
 .. _predictor:
 .. automodule:: allennlp.service.predictors.predictor
@@ -45,6 +49,30 @@ allennlp.service.predictors
 
 .. _coreference-resolution:
 .. automodule:: allennlp.service.predictors.coref
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. _constituency-parser:
+.. automodule:: allennlp.service.predictors.constituency_parser
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. _simple-seq2seq:
+.. automodule:: allennlp.service.predictors.simple_seq2seq
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. _wikitables-parser:
+.. automodule:: allennlp.service.predictors.wikitables_parser
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. _nlvr-parser:
+.. automodule:: allennlp.service.predictors.nlvr_parser
    :members:
    :undoc-members:
    :show-inheritance:

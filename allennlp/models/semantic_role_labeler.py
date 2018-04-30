@@ -36,7 +36,7 @@ class SemanticRoleLabeler(Model):
         A Vocabulary, required in order to compute sizes for input/output projections.
     text_field_embedder : ``TextFieldEmbedder``, required
         Used to embed the ``tokens`` ``TextField`` we get as input to the model.
-    stacked_encoder : ``Seq2SeqEncoder``
+    encoder : ``Seq2SeqEncoder``
         The encoder (with its own internal stacking) that we will use in between embedding tokens
         and predicting output tags.
     binary_feature_dim : int, required.
@@ -45,14 +45,17 @@ class SemanticRoleLabeler(Model):
         Used to initialize the model parameters.
     regularizer : ``RegularizerApplicator``, optional (default=``None``)
         If provided, will be used to calculate the regularization penalty during training.
+    label_smoothing : ``float``, optional (default = 0.0)
+        Whether or not to use label smoothing on the labels when computing cross entropy loss.
     """
     def __init__(self, vocab: Vocabulary,
                  text_field_embedder: TextFieldEmbedder,
-                 stacked_encoder: Seq2SeqEncoder,
+                 encoder: Seq2SeqEncoder,
                  binary_feature_dim: int,
                  embedding_dropout: float = 0.0,
                  initializer: InitializerApplicator = InitializerApplicator(),
-                 regularizer: Optional[RegularizerApplicator] = None) -> None:
+                 regularizer: Optional[RegularizerApplicator] = None,
+                 label_smoothing: float = None) -> None:
         super(SemanticRoleLabeler, self).__init__(vocab, regularizer)
 
         self.text_field_embedder = text_field_embedder
@@ -62,15 +65,16 @@ class SemanticRoleLabeler(Model):
         # for verb, because the verb index is provided to the model.
         self.span_metric = SpanBasedF1Measure(vocab, tag_namespace="labels", ignore_classes=["V"])
 
-        self.stacked_encoder = stacked_encoder
+        self.encoder = encoder
         # There are exactly 2 binary features for the verb predicate embedding.
         self.binary_feature_embedding = Embedding(2, binary_feature_dim)
-        self.tag_projection_layer = TimeDistributed(Linear(self.stacked_encoder.get_output_dim(),
+        self.tag_projection_layer = TimeDistributed(Linear(self.encoder.get_output_dim(),
                                                            self.num_classes))
         self.embedding_dropout = Dropout(p=embedding_dropout)
+        self._label_smoothing = label_smoothing
 
         check_dimensions_match(text_field_embedder.get_output_dim() + binary_feature_dim,
-                               stacked_encoder.get_input_dim(),
+                               encoder.get_input_dim(),
                                "text embedding dim + verb indicator embedding dim",
                                "encoder input dim")
         initializer(self)
@@ -121,7 +125,7 @@ class SemanticRoleLabeler(Model):
         embedded_text_with_verb_indicator = torch.cat([embedded_text_input, embedded_verb_indicator], -1)
         batch_size, sequence_length, _ = embedded_text_with_verb_indicator.size()
 
-        encoded_text = self.stacked_encoder(embedded_text_with_verb_indicator, mask)
+        encoded_text = self.encoder(embedded_text_with_verb_indicator, mask)
 
         logits = self.tag_projection_layer(encoded_text)
         reshaped_log_probs = logits.view(-1, self.num_classes)
@@ -130,7 +134,10 @@ class SemanticRoleLabeler(Model):
                                                                           self.num_classes])
         output_dict = {"logits": logits, "class_probabilities": class_probabilities}
         if tags is not None:
-            loss = sequence_cross_entropy_with_logits(logits, tags, mask)
+            loss = sequence_cross_entropy_with_logits(logits,
+                                                      tags,
+                                                      mask,
+                                                      label_smoothing=self._label_smoothing)
             self.span_metric(class_probabilities, tags, mask)
             output_dict["loss"] = loss
 
@@ -166,14 +173,9 @@ class SemanticRoleLabeler(Model):
 
     def get_metrics(self, reset: bool = False):
         metric_dict = self.span_metric.get_metric(reset=reset)
-        if self.training:
-            # This can be a lot of metrics, as there are 3 per class.
-            # During training, we only really care about the overall
-            # metrics, so we filter for them here.
-            # TODO(Mark): This is fragile and should be replaced with some verbosity level in Trainer.
-            return {x: y for x, y in metric_dict.items() if "overall" in x}
-
-        return metric_dict
+        # This can be a lot of metrics, as there are 3 per class.
+        # we only really care about the overall metrics, so we filter for them here.
+        return {x: y for x, y in metric_dict.items() if "overall" in x}
 
     def get_viterbi_pairwise_potentials(self):
         """
@@ -204,18 +206,20 @@ class SemanticRoleLabeler(Model):
     def from_params(cls, vocab: Vocabulary, params: Params) -> 'SemanticRoleLabeler':
         embedder_params = params.pop("text_field_embedder")
         text_field_embedder = TextFieldEmbedder.from_params(vocab, embedder_params)
-        stacked_encoder = Seq2SeqEncoder.from_params(params.pop("stacked_encoder"))
+        encoder = Seq2SeqEncoder.from_params(params.pop("encoder"))
         binary_feature_dim = params.pop_int("binary_feature_dim")
+        label_smoothing = params.pop_float("label_smoothing", None)
 
         initializer = InitializerApplicator.from_params(params.pop('initializer', []))
         regularizer = RegularizerApplicator.from_params(params.pop('regularizer', []))
-
+        params.assert_empty(cls.__name__)
         return cls(vocab=vocab,
                    text_field_embedder=text_field_embedder,
-                   stacked_encoder=stacked_encoder,
+                   encoder=encoder,
                    binary_feature_dim=binary_feature_dim,
                    initializer=initializer,
-                   regularizer=regularizer)
+                   regularizer=regularizer,
+                   label_smoothing=label_smoothing)
 
 def write_to_conll_eval_file(prediction_file: TextIO,
                              gold_file: TextIO,

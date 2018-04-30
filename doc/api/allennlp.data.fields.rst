@@ -7,18 +7,27 @@ allennlp.data.fields
    :show-inheritance:
 
 * :ref:`Field<field>`
+* :ref:`ArrayField<array-field>`
 * :ref:`IndexField<index-field>`
 * :ref:`SpanField<span-field>`
+* :ref:`KnowledgeGraphField<knowledge-graph-field>`
 * :ref:`LabelField<label-field>`
+* :ref:`MultiLabelField<label-field>`
 * :ref:`ListField<list-field>`
 * :ref:`MetadataField<metadata-field>`
+* :ref:`ProductionRuleField<production-rule-field>`
 * :ref:`SequenceField<sequence-field>`
 * :ref:`SequenceLabelField<sequence-label-field>`
 * :ref:`TextField<text-field>`
-* :ref:`ArrayField<array-field>`
 
 .. _field:
 .. automodule:: allennlp.data.fields.field
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. _array-field:
+.. automodule:: allennlp.data.fields.array_field
    :members:
    :undoc-members:
    :show-inheritance:
@@ -35,8 +44,20 @@ allennlp.data.fields
    :undoc-members:
    :show-inheritance:
 
+.. _knowledge-graph-field:
+.. automodule:: allennlp.data.fields.knowledge_graph_field
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 .. _label-field:
 .. automodule:: allennlp.data.fields.label_field
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. _multilabel-field:
+.. automodule:: allennlp.data.fields.multilabel_field
    :members:
    :undoc-members:
    :show-inheritance:
@@ -49,6 +70,12 @@ allennlp.data.fields
 
 .. _metadata-field:
 .. automodule:: allennlp.data.fields.metadata_field
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. _production-rule-field:
+.. automodule:: allennlp.data.fields.production_rule_field
    :members:
    :undoc-members:
    :show-inheritance:
@@ -70,10 +97,3 @@ allennlp.data.fields
    :members:
    :undoc-members:
    :show-inheritance:
-
-.. _array-field:
-.. automodule:: allennlp.data.fields.array_field
-   :members:
-   :undoc-members:
-   :show-inheritance:
-

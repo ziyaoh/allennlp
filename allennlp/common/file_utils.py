@@ -11,11 +11,12 @@ import tempfile
 from urllib.parse import urlparse
 
 import requests
-import tqdm
+
+from allennlp.common.tqdm import Tqdm
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
-CACHE_ROOT = os.path.expanduser(os.path.join('~', '.allennlp'))
+CACHE_ROOT = os.getenv('ALLENNLP_CACHE_ROOT', os.path.expanduser(os.path.join('~', '.allennlp')))
 DATASET_CACHE = os.path.join(CACHE_ROOT, "datasets")
 
 def url_to_filename(url: str, etag: str = None) -> str:
@@ -111,7 +112,7 @@ def get_from_cache(url: str, cache_dir: str = None) -> str:
         req = requests.get(url, stream=True)
         content_length = req.headers.get('Content-Length')
         total = int(content_length) if content_length is not None else None
-        progress = tqdm.tqdm(unit="B", total=total)
+        progress = Tqdm.tqdm(unit="B", total=total)
         with open(temp_filename, 'wb') as temp_file:
             for chunk in req.iter_content(chunk_size=1024):
                 if chunk: # filter out keep-alive new chunks
