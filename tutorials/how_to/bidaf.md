@@ -142,8 +142,8 @@ Here, the "predictor" for the tagging model expects a JSON blob containing a sen
 
 ```bash
 $ cat <<EOF >> inputs.txt
-{"sentence": "I am reading a tutorial."}
-{"sentence": "Natural language processing is easy."}
+{"question": "What is this?", "passage": "This is a passage."}
+{"question": "Where did cat go?", "passage": "Cat went to church."}
 EOF
 ```
 
@@ -151,11 +151,4 @@ After which we can make predictions:
 
 ```bash
 $ allennlp predict /tmp/tutorials/getting_started/model.tar.gz inputs.txt
-... lots of logging omitted
-{"tags": ["ppss", "bem", "vbg", "at", "nn", "."], "class_probabilities": [[ ... ]]}
-{"tags": ["jj", "nn", "nn", "bez", "jj", "."], "class_probabilities": [[ ... ]]}
 ```
-
-Here the `"tags"` are the part-of-speech tags for each sentence, and the
-`"class_probabilities"` are the predicted distributions of tags for each sentence
-(and are not shown above, as there are a lot of them).
