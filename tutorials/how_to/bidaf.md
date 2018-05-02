@@ -141,10 +141,9 @@ file of inputs and makes predictions using the model.
 Here, the "predictor" for the tagging model expects a JSON blob containing a sentence:
 
 ```bash
-$ cat <<EOF >> inputs.txt
+$ cat inputs.txt
 {"question": "What is this?", "passage": "This is a passage."}
 {"question": "Where did cat go?", "passage": "Cat went to church."}
-EOF
 ```
 
 After which we can make predictions:
