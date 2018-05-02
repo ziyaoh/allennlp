@@ -43,9 +43,9 @@ cd allennlp
 
 3.  Install the required dependencies.
 
-    ```
-    INSTALL_TEST_REQUIREMENTS="true" ./scripts/install_requirements.sh
-    ```
+```
+INSTALL_TEST_REQUIREMENTS="true" ./scripts/install_requirements.sh
+```
 
 4. You'll also need to install PyTorch 0.3.1, following the appropriate instructions
 for your platform from [their website](http://pytorch.org/).
@@ -62,7 +62,6 @@ you configure experiments using JSON files. (More specifically, [HOCON](https://
 
 Our bidaf configuration is defined in
 [training_config/bidaf.json](https://github.com/ziyaoh/allennlp/blob/master/training_config/bidaf.json).
-You can peek at it now if you want; we'll go through it in detail in the next tutorial.
 Right at this instant you might care about the `trainer` section, which specifies how we want to train our model:
 
 ```js
@@ -108,9 +107,7 @@ You can also manually download the dataset to local machine and then specify the
 ```
 
 Now that the model is trained, there should be a bunch of files in the serialization directory. The `vocabulary` directory
-contains the model's vocabularies, each of which is a (distinct) encoding of strings as integers.
-In our case, we'll have one for `tokens` (i.e. words) and another for `tags`. The various
-`training_state_epoch_XX.th` files contain the state of the trainer after each epoch (`.th` is the suffix for serialized torch tensors),
+contains the model's vocabularies, each of which is a (distinct) encoding of strings as integers. The various `training_state_epoch_XX.th` files contain the state of the trainer after each epoch (`.th` is the suffix for serialized torch tensors),
 so that you could resume training where you left off, if you wanted to.
 Similarly, the `model_state_epoch_XX.th` files contain the model weights after each epoch.
 `best.th` contains the *best* weights (that is, those from the epoch with the smallest `loss` on the validation dataset).
@@ -134,7 +131,6 @@ There is also a command line option to use a GPU, if you have one.
 
 ## Making Predictions
 
-Finally, what's the good of training a model if you can't use it to make predictions?
 The `predict` command takes an archived model and a [JSON lines](https://en.wikipedia.org/wiki/JSON_Streaming#Line_delimited_JSON)
 file of inputs and makes predictions using the model.
 
@@ -151,3 +147,7 @@ After which we can make predictions:
 ```bash
 $ allennlp predict /tmp/tutorials/getting_started/model.tar.gz inputs.txt
 ```
+
+## Other Available Commands
+
+For other available commands, take a look at [allennlp/commands](https://github.com/ziyaoh/allennlp/tree/bidaf_doc/allennlp/commands).
