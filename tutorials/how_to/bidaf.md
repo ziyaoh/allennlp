@@ -66,23 +66,23 @@ You can peek at it now if you want; we'll go through it in detail in the next tu
 Right at this instant you might care about the `trainer` section, which specifies how we want to train our model:
 
 ```js
-  "trainer": {
+"trainer": {
     "num_epochs": 20,
     "grad_norm": 5.0,
     "patience": 10,
     "validation_metric": "+em",
     "cuda_device": 0,
     "learning_rate_scheduler": {
-      "type": "reduce_on_plateau",
-      "factor": 0.5,
-      "mode": "max",
-      "patience": 2
+        "type": "reduce_on_plateau",
+        "factor": 0.5,
+        "mode": "max",
+        "patience": 2
     },
     "optimizer": {
-      "type": "adam",
-      "betas": [0.9, 0.9]
+        "type": "adam",
+        "betas": [0.9, 0.9]
     }
-  }
+}
 ```
 
 Here the `num_epochs` parameter specifies that we want to make 20 training passes through the training dataset. `patience`
@@ -102,6 +102,11 @@ log all of the parameters it's using,
 and then display the progress and results of each epoch.
 You can also manually download the dataset to local machine and then specify the path to your dataset in the configuration json file.
 
+```js
+"train_data_path": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/squad/squad-train-v1.1.json",
+"validation_data_path": "https://s3-us-west-2.amazonaws.com/allennlp/datasets/squad/squad-dev-v1.1.json",
+```
+
 Now that the model is trained, there should be a bunch of files in the serialization directory. The `vocabulary` directory
 contains the model's vocabularies, each of which is a (distinct) encoding of strings as integers.
 In our case, we'll have one for `tokens` (i.e. words) and another for `tags`. The various
@@ -116,33 +121,14 @@ the `best` weights, and the `vocabulary`.
 ## Evaluating a Model
 
 Once you've trained a model, you likely want to evaluate it on another dataset.
-We have another 1000 sentences in the file `sentences.small.test`, which
-is shared publicly on Amazon S3.
 
 We can use the `evaluate` command, giving it the archived model and the evaluation dataset:
 
 ```
-$ allennlp evaluate /tmp/tutorials/getting_started/model.tar.gz --evaluation-data-file https://allennlp.s3.amazonaws.com/datasets/getting-started/sentences.small.test
+$ allennlp evaluate /tmp/allennlp/bidaf/model.tar.gz --evaluation-data-file https://s3-us-west-2.amazonaws.com/allennlp/datasets/squad/squad-dev-v1.1.json
 ```
 
 When you run this it will load the archived model, download and cache the evaluation dataset, and then make predictions:
-
-```
-2017-08-23 19:49:18,451 - INFO - allennlp.models.archival - extracting archive file /tmp/tutorials/getting_started/model.tar.gz to temp dir /var/folders/_n/mdsjzvcs6s705kpn87f399880000gp/T/tmptgu44ulc
-2017-08-23 19:49:18,643 - INFO - allennlp.commands.evaluate - Reading evaluation data from https://allennlp.s3.amazonaws.com/datasets/getting-started/sentences.small.test
-2017-08-23 19:49:18,643 - INFO - allennlp.common.file_utils - https://allennlp.s3.amazonaws.com/datasets/getting-started/sentences.small.test not found in cache, downloading to /Users/joelg/.allennlp/datasets/aHR0cHM6Ly9hbGxlbm5scC5zMy5hbWF6b25hd3MuY29tL2RhdGFzZXRzL2dldHRpbmctc3RhcnRlZC9zZW50ZW5jZXMuc21hbGwudGVzdA==
-100%|████████████████████████████████████████████████████████████████████████████████████| 170391/170391 [00:00<00:00, 1306579.69B/s]
-2017-08-23 19:49:20,203 - INFO - allennlp.data.dataset_readers.sequence_tagging - Reading instances from lines in file at: /Users/joelg/.allennlp/datasets/aHR0cHM6Ly9hbGxlbm5scC5zMy5hbWF6b25hd3MuY29tL2RhdGFzZXRzL2dldHRpbmctc3RhcnRlZC9zZW50ZW5jZXMuc21hbGwudGVzdA==
-1000it [00:00, 36100.84it/s]
-2017-08-23 19:49:20,233 - INFO - allennlp.data.dataset - Indexing dataset
-100%|██████████████████████████████████████████████████████████████████████████████████████████| 1000/1000 [00:00<00:00, 7155.68it/s]
-2017-08-23 19:49:20,373 - INFO - allennlp.commands.evaluate - Iterating over dataset
-100%|████████████████████████████████████████████████████████████████████████████████████████████████| 32/32 [00:05<00:00,  5.47it/s]
-2017-08-23 19:49:26,228 - INFO - allennlp.commands.evaluate - Finished evaluating.
-2017-08-23 19:49:26,228 - INFO - allennlp.commands.evaluate - Metrics:
-2017-08-23 19:49:26,228 - INFO - allennlp.commands.evaluate - accuracy: 0.9070572302753674
-2017-08-23 19:49:26,228 - INFO - allennlp.commands.evaluate - accuracy3: 0.9681496714651151
-```
 
 There is also a command line option to use a GPU, if you have one.
 
