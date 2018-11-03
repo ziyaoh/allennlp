@@ -132,5 +132,5 @@ class DemoModel:
         self.predictor_name = predictor_name
 
     def predictor(self) -> Predictor:
-        archive = load_archive(self.archive_file)
+        archive = load_archive(self.archive_file, cuda_device=0)
         return Predictor.from_archive(archive, self.predictor_name)
