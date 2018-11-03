@@ -191,6 +191,12 @@ class BidirectionalAttentionFlow(Model):
         # Shape: (batch_size, passage_length, encoding_dim)
         passage_question_vectors = util.weighted_sum(encoded_question, passage_question_attention)
 
+        my_question_passage_similarity = self._matrix_attention(encoded_question, encoded_passage)
+        print(passage_question_similarity)
+        print()
+        print(my_question_passage_similarity)
+        my_question_passage_attention = util.last_dim_softmax(my_question_passage_similarity, passage_mask)
+
         # We replace masked values with something really negative here, so they don't affect the
         # max below.
         masked_similarity = util.replace_masked_values(passage_question_similarity,
@@ -249,6 +255,8 @@ class BidirectionalAttentionFlow(Model):
         best_span = self.get_best_span(span_start_logits, span_end_logits)
 
         output_dict = {
+                "question_passage_attention": my_question_passage_attention,
+                "passage_question_similarity": passage_question_similarity,
                 "passage_question_attention": passage_question_attention,
                 "span_start_logits": span_start_logits,
                 "span_start_probs": span_start_probs,
