@@ -156,7 +156,10 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
             return Response(response="", status=200)
 
         # Do log if no argument is specified
-        record_to_database = request.args.get("record", "true").lower() != "false"
+        record_to_database = request.args.get("record", "false").lower() != "false"
+
+        # Don't do batch prediction if specified
+        # predict_in_batch = request.args.get("get", "false").lower() == "true"
 
         # Do use the cache if no argument is specified
         use_cache = request.args.get("cache", "true").lower() != "false"
@@ -232,6 +235,101 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
         logger.info("prediction: %s", json.dumps(log_blob))
 
         print(log_blob)
+
+        return jsonify(prediction)
+
+    @app.route('/predict/batch/<model_name>', methods=['POST', 'OPTIONS'])
+    def batch_predict(model_name: str) -> Response:  # pylint: disable=unused-variable
+        """make batch prediction using the specified model and return the results"""
+        if request.method == "OPTIONS":
+            return Response(response="", status=200)
+
+        # Do log if no argument is specified
+        record_to_database = request.args.get("record", "false").lower() != "false"
+
+        # Do use the cache if no argument is specified
+        # use_cache = request.args.get("cache", "true").lower() != "false"
+
+        model = app.predictors.get(model_name.lower())
+        if model is None:
+            raise ServerError("unknown model: {}".format(model_name), status_code=400)
+
+        data = request.get_json()
+
+        log_blob = {"model": model_name, "inputs": data, "cached": False, "outputs": {}}
+
+        # Record the number of cache hits before we hit the cache so we can tell whether we hit or not.
+        # In theory this could result in false positives.
+        pre_hits = _caching_prediction.cache_info().hits  # pylint: disable=no-value-for-parameter
+
+        '''
+        if use_cache and cache_size > 0:
+            # lru_cache insists that all function arguments be hashable,
+            # so unfortunately we have to stringify the data.
+            prediction = _caching_prediction(model, json.dumps(data))
+        else:
+            # if cache_size is 0, skip caching altogether
+            prediction = model.predict_batch_json(data)
+        '''
+        prediction = model.predict_batch_json(data)
+        prediction = [{'answer': instance['best_span_str']} for instance in prediction]
+
+        for i, instance in enumerate(data):
+            for key in instance:
+                prediction[i][key] = instance[key]
+        post_hits = _caching_prediction.cache_info().hits  # pylint: disable=no-value-for-parameter
+
+        if record_to_database and demo_db is not None:
+            try:
+                perma_id = None
+                perma_id = demo_db.add_result(headers=dict(request.headers),
+                                              model_name=model_name,
+                                              inputs=data,
+                                              outputs=prediction)
+                if perma_id is not None:
+                    slug = int_to_slug(perma_id)
+                    prediction["slug"] = slug
+                    log_blob["slug"] = slug
+
+            except Exception:  # pylint: disable=broad-except
+                # TODO(joelgrus): catch more specific errors
+                logger.exception("Unable to add result to database", exc_info=True)
+
+        '''
+        if use_cache and post_hits > pre_hits:
+            # Cache hit, so insert an artifical pause
+            log_blob["cached"] = True
+            time.sleep(0.25)
+        '''
+
+        '''
+        # The model predictions are extremely verbose, so we only log the most human-readable
+        # parts of them.
+        if model_name == "machine-comprehension":
+            log_blob["outputs"]["best_span_str"] = prediction["best_span_str"]
+        elif model_name == "coreference-resolution":
+            log_blob["outputs"]["clusters"] = prediction["clusters"]
+            log_blob["outputs"]["document"] = prediction["document"]
+        elif model_name == "textual-entailment":
+            log_blob["outputs"]["label_probs"] = prediction["label_probs"]
+        elif model_name == "named-entity-recognition":
+            log_blob["outputs"]["tags"] = prediction["tags"]
+        elif model_name == "semantic-role-labeling":
+            verbs = []
+            for verb in prediction["verbs"]:
+                # Don't want to log boring verbs with no semantic parses.
+                good_tags = [tag for tag in verb["tags"] if tag != "0"]
+                if len(good_tags) > 1:
+                    verbs.append({"verb": verb["verb"], "description": verb["description"]})
+            log_blob["outputs"]["verbs"] = verbs
+
+        elif model_name == "constituency-parsing":
+            log_blob["outputs"]["trees"] = prediction["trees"]
+
+        logger.info("prediction: %s", json.dumps(log_blob))
+
+        print(log_blob)
+        '''
 
         return jsonify(prediction)
 
