@@ -33,6 +33,7 @@ DEFAULT_MODELS = {
                 '/home/ziyaoh/allennlp/models/bidaf/model.tar.gz',  # pylint: disable=line-too-long
                 'machine-comprehension'
         ),
+        '''
         'machine-comprehension-normal': DemoModel(
                 '/home/ziyaoh/allennlp/models/bidaf_half/model.tar.gz',  # pylint: disable=line-too-long
                 'machine-comprehension'
@@ -49,6 +50,7 @@ DEFAULT_MODELS = {
                 '/home/ziyaoh/allennlp/models/bidaf_elmo_half/model.tar.gz',  # pylint: disable=line-too-long
                 'machine-comprehension'
         ),
+        '''
         'machine-comprehension-elmo-hard': DemoModel(
                 '/home/ziyaoh/allennlp/models/bidaf_elmo_full/model.tar.gz',  # pylint: disable=line-too-long
                 'machine-comprehension'
